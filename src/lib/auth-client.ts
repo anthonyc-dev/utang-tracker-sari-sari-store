@@ -1,0 +1,14 @@
+import { nextCookies } from "better-auth/next-js";
+import { createAuthClient } from "better-auth/react";
+
+export const authClient = createAuthClient({
+  plugins: [nextCookies()],
+  providers: [
+    {
+      id: "google",
+      name: "Google",
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    },
+  ],
+});

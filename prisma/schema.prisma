@@ -12,6 +12,7 @@ datasource db {
   provider = "postgresql"
 }
 
+//better-auth schema
 model User {
   id            String    @id
   name          String
@@ -22,6 +23,7 @@ model User {
   updatedAt     DateTime  @updatedAt
   sessions      Session[]
   accounts      Account[]
+  stores    StoreUser[]
 
   @@unique([email])
   @@map("user")
@@ -73,4 +75,180 @@ model Verification {
 
   @@index([identifier])
   @@map("verification")
+}
+
+//--------------------
+//utang tracker schema
+//--------------------
+/* =====================
+   ENUMS
+===================== */
+
+enum UtangStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+enum PaymentMethod {
+  CASH
+  EWALLET
+  BANK_TRANSFER
+}
+
+enum StoreUserRole {
+  OWNER
+  STAFF
+}
+
+/* =====================
+   STORES
+===================== */
+
+model Store {
+  id        String   @id @default(uuid())
+  name      String
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users     StoreUser[]
+  customers Customer[]
+  items     Item[]
+  utangs    Utang[]
+
+  @@map("stores")
+  @@index([name])
+}
+
+/* =====================
+   STORE USERS (OWNER / STAFF)
+===================== */
+
+model StoreUser {
+  id      String         @id @default(uuid())
+  userId  String
+  storeId String
+  role    StoreUserRole
+
+  user    User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store   Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storeId])
+  @@map("store_users")
+  @@index([role])
+  @@index([storeId])
+}
+
+/* =====================
+   CUSTOMERS
+===================== */
+
+model Customer {
+  id        String   @id @default(uuid())
+  storeId   String
+  name      String
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  store     Store   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  utangs    Utang[]
+
+  @@map("customers")
+  @@index([storeId])
+  @@index([name])
+  @@index([phone])
+}
+
+/* =====================
+   INVENTORY ITEMS
+===================== */
+
+model Item {
+  id        String   @id @default(uuid())
+  storeId   String
+  name      String
+  category  String?
+  price     Decimal  @db.Decimal(10, 2)
+  stock     Int
+  unit      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  store      Store       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  utangItems UtangItem[]
+
+  @@map("items")
+  @@index([storeId])
+  @@index([name])
+  @@index([category])
+}
+
+/* =====================
+   UTANG (DEBTS)
+===================== */
+
+model Utang {
+  id           String      @id @default(uuid())
+  storeId      String
+  customerId   String
+  description  String?
+  totalAmount  Decimal     @db.Decimal(10, 2)
+  status       UtangStatus @default(UNPAID)
+  dueDate      DateTime?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  store        Store      @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer     Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  items        UtangItem[]
+  payments     Payment[]
+
+  @@map("utang")
+  @@index([storeId])
+  @@index([customerId])
+  @@index([status])
+  @@index([dueDate])
+}
+
+/* =====================
+   UTANG ITEMS (SOLD ON CREDIT)
+===================== */
+
+model UtangItem {
+  id        String   @id @default(uuid())
+  utangId   String
+  itemId    String
+  quantity  Int
+  unitPrice Decimal @db.Decimal(10, 2)
+
+  utang     Utang @relation(fields: [utangId], references: [id], onDelete: Cascade)
+  item      Item  @relation(fields: [itemId], references: [id])
+
+  @@map("utang_items")
+  @@index([utangId])
+  @@index([itemId])
+}
+
+/* =====================
+   PAYMENTS
+===================== */
+
+model Payment {
+  id               String        @id @default(uuid())
+  utangId          String
+  payerName        String
+  amount           Decimal       @db.Decimal(10, 2)
+  paymentMethod    PaymentMethod
+  paymentReference String?
+  paymentDate      DateTime      @default(now())
+  createdAt        DateTime      @default(now())
+
+  utang            Utang @relation(fields: [utangId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+  @@index([utangId])
+  @@index([paymentMethod])
+  @@index([paymentDate])
 }

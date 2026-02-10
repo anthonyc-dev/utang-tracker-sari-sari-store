@@ -2,6 +2,7 @@
 
 import dataProviderSimpleRest from "@refinedev/simple-rest";
 
-const API_URL = "https://api.fake-rest.refine.dev";
+// Next.js API routes (App Router) live under `/api/*`
+const API_URL = "/api";
 
 export const dataProvider = dataProviderSimpleRest(API_URL);

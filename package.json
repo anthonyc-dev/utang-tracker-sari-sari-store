@@ -12,8 +12,10 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "refine": "refine",
-    "prisma:mig": "pnpm prisma migrate dev",
-    "prisma:gen": "pnpm prisma generate"
+    "prisma:gen": "prisma generate",
+    "prisma:mig": "prisma migrate dev",
+    "prisma:stu": "prisma studio",
+    "prisma:rst": "prisma migrate reset"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",

@@ -3,7 +3,15 @@
 import React from "react";
 import { Refine } from "@refinedev/core";
 import { RefineKbar, RefineKbarProvider } from "@refinedev/kbar";
-import { Store, LayoutDashboard, Users } from "lucide-react";
+import {
+  Store,
+  LayoutDashboard,
+  Users,
+  Building2,
+  Package,
+  Receipt,
+  CreditCard,
+} from "lucide-react";
 
 import routerProvider from "@refinedev/nextjs-router";
 
@@ -34,9 +42,29 @@ export const RefineContext = ({ children }: RefineContextProps) => {
             meta: { label: "Dashboard", icon: <LayoutDashboard className="size-4" /> },
           },
           {
-            name: "user",
-            list: "/user",
-            meta: { label: "User", icon: <Users className="size-4" /> },
+            name: "stores",
+            list: "/stores",
+            meta: { label: "Stores", icon: <Building2 className="size-4" /> },
+          },
+          {
+            name: "customers",
+            list: "/customers",
+            meta: { label: "Customers", icon: <Users className="size-4" /> },
+          },
+          {
+            name: "items",
+            list: "/items",
+            meta: { label: "Items", icon: <Package className="size-4" /> },
+          },
+          {
+            name: "utang",
+            list: "/utang",
+            meta: { label: "Utang", icon: <Receipt className="size-4" /> },
+          },
+          {
+            name: "payments",
+            list: "/payments",
+            meta: { label: "Payments", icon: <CreditCard className="size-4" /> },
           },
         ]}
         options={{

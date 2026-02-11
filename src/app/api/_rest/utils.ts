@@ -1,35 +1,42 @@
 import "server-only";
 
-import type { NextRequest } from "next/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { Prisma, PrismaClient } from "@prisma/client";
+import { z } from "zod";
 import prisma from "@/lib/prisma";
 
-type AllowedResource =
-  | "stores"
-  | "store_users"
-  | "customers"
-  | "items"
-  | "utang"
-  | "utang_items"
-  | "payments"
-  | "user";
+// --- Constants & Types ---
+
+export const ALLOWED_RESOURCES = [
+  "stores",
+  "store_users",
+  "customers",
+  "items",
+  "utang",
+  "utang_items",
+  "payments",
+  "user",
+] as const;
+
+export type AllowedResource = (typeof ALLOWED_RESOURCES)[number];
 
 export function isAllowedResource(
   resource: string,
 ): resource is AllowedResource {
-  return (
-    resource === "stores" ||
-    resource === "store_users" ||
-    resource === "customers" ||
-    resource === "items" ||
-    resource === "utang" ||
-    resource === "utang_items" ||
-    resource === "payments" ||
-    resource === "user"
-  );
+  return ALLOWED_RESOURCES.includes(resource as AllowedResource);
 }
 
-export function getDelegate(resource: AllowedResource) {
+// A generic type for Prisma delegates to enforce common methods
+type PrismaDelegate = {
+  findMany: (args?: any) => Promise<any[]>;
+  count: (args?: any) => Promise<number>;
+  findUnique: (args: { where: { id: string } }) => Promise<any | null>;
+  create: (args: { data: any }) => Promise<any>;
+  update: (args: { where: { id: string }; data: any }) => Promise<any>;
+  delete: (args: { where: { id: string } }) => Promise<any>;
+};
+
+export function getDelegate(resource: AllowedResource): PrismaDelegate {
   switch (resource) {
     case "stores":
       return prisma.store;
@@ -47,66 +54,96 @@ export function getDelegate(resource: AllowedResource) {
       return prisma.payment;
     case "user":
       return prisma.user;
+    default:
+      throw new Error(`Unknown resource: ${resource}`);
   }
 }
 
+// --- Validation Schemas ---
+
+const paginationSchema = z.object({
+  _start: z.coerce.number().int().nonnegative().optional(),
+  _end: z.coerce.number().int().nonnegative().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  perPage: z.coerce.number().int().positive().optional(),
+});
+
+const sortSchema = z.object({
+  _sort: z.string().optional(),
+  _order: z.enum(["ASC", "DESC", "asc", "desc"]).optional().default("ASC"),
+});
+
+// --- Helper Functions ---
+
 function parsePagination(searchParams: URLSearchParams) {
-  // refinedev/simple-rest uses `_start` and `_end`
-  const start = Number(searchParams.get("_start") ?? "0");
-  const end = Number(searchParams.get("_end") ?? "0");
+  const parseResult = paginationSchema.safeParse(
+    Object.fromEntries(searchParams.entries()),
+  );
 
-  const safeStart = Number.isFinite(start) && start >= 0 ? start : 0;
-  const safeEnd = Number.isFinite(end) && end >= 0 ? end : 0;
-
-  if (safeEnd > safeStart) {
-    return { skip: safeStart, take: safeEnd - safeStart };
+  if (!parseResult.success) {
+    return { skip: 0, take: 10 }; // Safe fallback
   }
 
-  // Fallback to `page` & `perPage` if present
-  const page = Number(searchParams.get("page") ?? "1");
-  const perPage = Number(searchParams.get("perPage") ?? "10");
-  const safePerPage = Number.isFinite(perPage) && perPage > 0 ? perPage : 10;
-  const safePage = Number.isFinite(page) && page > 0 ? page : 1;
+  const { _start, _end, page, perPage } = parseResult.data;
+
+  // 1. Priority: _start & _end (Refine default)
+  if (_start !== undefined && _end !== undefined && _end > _start) {
+    return { skip: _start, take: _end - _start };
+  }
+
+  // 2. Fallback: page & perPage
+  const safePage = page ?? 1;
+  const safePerPage = perPage ?? 10;
   return { skip: (safePage - 1) * safePerPage, take: safePerPage };
 }
 
 function parseSort(searchParams: URLSearchParams) {
-  const sortField = searchParams.get("_sort") ?? undefined;
-  const sortOrder = (searchParams.get("_order") ?? "ASC").toUpperCase();
-  if (!sortField) return undefined;
-  const direction = sortOrder === "DESC" ? "desc" : "asc";
-  return { [sortField]: direction } as Record<string, "asc" | "desc">;
+  const parseResult = sortSchema.safeParse(
+    Object.fromEntries(searchParams.entries()),
+  );
+
+  if (!parseResult.success || !parseResult.data._sort) {
+    return undefined;
+  }
+
+  const { _sort, _order } = parseResult.data;
+  const direction = _order.toLowerCase() as "asc" | "desc";
+  return { [_sort]: direction };
 }
 
-function stringOrUndefined(v: unknown) {
-  return typeof v === "string" && v.trim() ? v : undefined;
+function stringOrUndefined(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined;
 }
 
-function buildWhere(resource: AllowedResource, searchParams: URLSearchParams) {
-  // Simple REST provider may send `q` (full text-ish)
+// --- Filter Building ---
+
+function buildWhere(
+  resource: AllowedResource,
+  searchParams: URLSearchParams,
+): any {
   const q = stringOrUndefined(searchParams.get("q"));
+  const params = Object.fromEntries(searchParams.entries());
 
-  // Also allow direct equality filters (e.g. `storeId=...`)
-  // We keep this intentionally small and explicit per resource.
   switch (resource) {
     case "stores": {
-      const where: any = {};
+      const where: Prisma.StoreWhereInput = {};
       if (q) where.name = { contains: q, mode: "insensitive" };
       return where;
     }
     case "store_users": {
-      const where: any = {};
-      const storeId = stringOrUndefined(searchParams.get("storeId"));
-      const userId = stringOrUndefined(searchParams.get("userId"));
-      const role = stringOrUndefined(searchParams.get("role"));
+      const where: Prisma.StoreUserWhereInput = {};
+      const storeId = stringOrUndefined(params.storeId);
+      const userId = stringOrUndefined(params.userId);
+      const role = stringOrUndefined(params.role);
+
       if (storeId) where.storeId = storeId;
       if (userId) where.userId = userId;
-      if (role) where.role = role;
+      if (role) where.role = role as any;
       return where;
     }
     case "customers": {
-      const where: any = {};
-      const storeId = stringOrUndefined(searchParams.get("storeId"));
+      const where: Prisma.CustomerWhereInput = {};
+      const storeId = stringOrUndefined(params.storeId);
       if (storeId) where.storeId = storeId;
       if (q) {
         where.OR = [
@@ -117,9 +154,9 @@ function buildWhere(resource: AllowedResource, searchParams: URLSearchParams) {
       return where;
     }
     case "items": {
-      const where: any = {};
-      const storeId = stringOrUndefined(searchParams.get("storeId"));
-      const category = stringOrUndefined(searchParams.get("category"));
+      const where: Prisma.ItemWhereInput = {};
+      const storeId = stringOrUndefined(params.storeId);
+      const category = stringOrUndefined(params.category);
       if (storeId) where.storeId = storeId;
       if (category) where.category = category;
       if (q) {
@@ -131,32 +168,30 @@ function buildWhere(resource: AllowedResource, searchParams: URLSearchParams) {
       return where;
     }
     case "utang": {
-      const where: any = {};
-      const storeId = stringOrUndefined(searchParams.get("storeId"));
-      const customerId = stringOrUndefined(searchParams.get("customerId"));
-      const status = stringOrUndefined(searchParams.get("status"));
+      const where: Prisma.UtangWhereInput = {};
+      const storeId = stringOrUndefined(params.storeId);
+      const customerId = stringOrUndefined(params.customerId);
+      const status = stringOrUndefined(params.status);
       if (storeId) where.storeId = storeId;
       if (customerId) where.customerId = customerId;
-      if (status) where.status = status;
+      if (status) where.status = status as any;
       if (q) where.description = { contains: q, mode: "insensitive" };
       return where;
     }
     case "utang_items": {
-      const where: any = {};
-      const utangId = stringOrUndefined(searchParams.get("utangId"));
-      const itemId = stringOrUndefined(searchParams.get("itemId"));
+      const where: Prisma.UtangItemWhereInput = {};
+      const utangId = stringOrUndefined(params.utangId);
+      const itemId = stringOrUndefined(params.itemId);
       if (utangId) where.utangId = utangId;
       if (itemId) where.itemId = itemId;
       return where;
     }
     case "payments": {
-      const where: any = {};
-      const utangId = stringOrUndefined(searchParams.get("utangId"));
-      const paymentMethod = stringOrUndefined(
-        searchParams.get("paymentMethod"),
-      );
+      const where: Prisma.PaymentWhereInput = {};
+      const utangId = stringOrUndefined(params.utangId);
+      const paymentMethod = stringOrUndefined(params.paymentMethod);
       if (utangId) where.utangId = utangId;
-      if (paymentMethod) where.paymentMethod = paymentMethod;
+      if (paymentMethod) where.paymentMethod = paymentMethod as any;
       if (q) {
         where.OR = [
           { payerName: { contains: q, mode: "insensitive" } },
@@ -166,7 +201,7 @@ function buildWhere(resource: AllowedResource, searchParams: URLSearchParams) {
       return where;
     }
     case "user": {
-      const where: any = {};
+      const where: Prisma.UserWhereInput = {};
       if (q) {
         where.OR = [
           { name: { contains: q, mode: "insensitive" } },
@@ -175,14 +210,18 @@ function buildWhere(resource: AllowedResource, searchParams: URLSearchParams) {
       }
       return where;
     }
+    default:
+      return {};
   }
 }
 
-export function jsonOk(data: unknown, init?: ResponseInit) {
+// --- Responses & Errors ---
+
+export function jsonOk<T>(data: T, init?: ResponseInit) {
   return NextResponse.json(data, { status: 200, ...init });
 }
 
-export function jsonCreated(data: unknown) {
+export function jsonCreated<T>(data: T) {
   return NextResponse.json(data, { status: 201 });
 }
 
@@ -193,78 +232,132 @@ export function jsonError(message: string, status = 400, extra?: unknown) {
   );
 }
 
+function handlePrismaError(e: unknown) {
+  console.error("API Error:", e);
+  if (e instanceof Prisma.PrismaClientKnownRequestError) {
+    if (e.code === "P2002") {
+      return jsonError("Unique constraint violation", 409, e.meta);
+    }
+    if (e.code === "P2025") {
+      return jsonError("Record not found", 404, e.meta);
+    }
+  }
+  if (e instanceof Error) {
+    return jsonError(e.message, 500);
+  }
+  return jsonError("An unexpected error occurred", 500);
+}
+
+// --- Handlers ---
+
 export async function listHandler(req: NextRequest, resource: AllowedResource) {
-  const url = new URL(req.url);
-  const { skip, take } = parsePagination(url.searchParams);
-  const orderBy = parseSort(url.searchParams);
-  const where = buildWhere(resource, url.searchParams);
+  try {
+    const url = new URL(req.url);
+    const { skip, take } = parsePagination(url.searchParams);
+    const orderBy = parseSort(url.searchParams);
+    const where = buildWhere(resource, url.searchParams);
 
-  const delegate: any = getDelegate(resource);
+    const delegate = getDelegate(resource);
 
-  const [total, data] = await Promise.all([
-    delegate.count({ where }),
-    delegate.findMany({
-      where,
-      skip,
-      take,
-      ...(orderBy ? { orderBy } : {}),
-    }),
-  ]);
+    const [total, data] = await Promise.all([
+      delegate.count({ where }),
+      delegate.findMany({
+        where,
+        skip,
+        take,
+        ...(orderBy ? { orderBy } : {}),
+      }),
+    ]);
 
-  // refinedev/simple-rest expects `x-total-count`
-  return jsonOk(data, { headers: { "x-total-count": String(total) } });
+    // refine expects `x-total-count` header for pagination
+    return jsonOk(data, { headers: { "x-total-count": String(total) } });
+  } catch (error) {
+    return handlePrismaError(error);
+  }
 }
 
 export async function getOneHandler(resource: AllowedResource, id: string) {
-  const delegate: any = getDelegate(resource);
-  const data = await delegate.findUnique({ where: { id } });
-  if (!data) return jsonError("Not found", 404);
-  return jsonOk(data);
+  try {
+    const delegate = getDelegate(resource);
+    const data = await delegate.findUnique({ where: { id } });
+    if (!data) return jsonError("Not found", 404);
+    return jsonOk(data);
+  } catch (error) {
+    return handlePrismaError(error);
+  }
 }
 
-export async function createHandler(resource: AllowedResource, body: any) {
-  const delegate: any = getDelegate(resource);
+export async function createHandler(
+  resource: AllowedResource,
+  body: any,
+  userId?: string,
+) {
+  try {
+    // 1. Store creation: Must link the creating user as OWNER
+    if (resource === "stores") {
+      if (!userId) {
+        return jsonError("You must be logged in to create a store.", 401);
+      }
 
-  // Allow nested create for utang (items/payments) if provided.
-  if (resource === "utang") {
-    const { items, payments, ...rest } = body ?? {};
-    const data = await prisma.utang.create({
-      data: {
-        ...rest,
-        ...(Array.isArray(items) && items.length
-          ? {
-              items: {
-                create: items.map((it: any) => ({
-                  itemId: it.itemId,
-                  quantity: it.quantity,
-                  unitPrice: it.unitPrice,
-                })),
-              },
-            }
-          : {}),
-        ...(Array.isArray(payments) && payments.length
-          ? {
-              payments: {
-                create: payments.map((p: any) => ({
-                  payerName: p.payerName,
-                  amount: p.amount,
-                  paymentMethod: p.paymentMethod,
-                  paymentReference: p.paymentReference ?? null,
-                  paymentDate: p.paymentDate
-                    ? new Date(p.paymentDate)
-                    : undefined,
-                })),
-              },
-            }
-          : {}),
-      },
-      include: { items: true, payments: true },
-    });
+      const data = await prisma.store.create({
+        data: {
+          ...body,
+          users: {
+            create: {
+              userId: userId,
+              role: "OWNER",
+            },
+          },
+        },
+      });
+      return jsonCreated(data);
+    }
+
+    // 2. Utang creation: Nested items/payments
+    if (resource === "utang") {
+      const { items, payments, ...rest } = body ?? {};
+      const data = await prisma.utang.create({
+        data: {
+          ...rest,
+          ...(Array.isArray(items) && items.length > 0
+            ? {
+                items: {
+                  create: items.map((it: any) => ({
+                    itemId: it.itemId,
+                    quantity: it.quantity,
+                    unitPrice: it.unitPrice,
+                  })),
+                },
+              }
+            : {}),
+          ...(Array.isArray(payments) && payments.length > 0
+            ? {
+                payments: {
+                  create: payments.map((p: any) => ({
+                    payerName: p.payerName,
+                    amount: p.amount,
+                    paymentMethod: p.paymentMethod,
+                    paymentReference: p.paymentReference ?? null,
+                    paymentDate: p.paymentDate
+                      ? new Date(p.paymentDate)
+                      : undefined,
+                  })),
+                },
+              }
+            : {}),
+        },
+        include: { items: true, payments: true },
+      });
+      return jsonCreated(data);
+    }
+
+    // 3. Generic create
+    const delegate = getDelegate(resource);
+    const data = await delegate.create({ data: body ?? {} });
     return jsonCreated(data);
+  } catch (error) {
+    return handlePrismaError(error);
   }
-
-  const data = await delegate.create({ data: body ?? {} });
-  return jsonCreated(data);
 }
 
 export async function updateHandler(
@@ -272,22 +365,21 @@ export async function updateHandler(
   id: string,
   body: any,
 ) {
-  const delegate: any = getDelegate(resource);
   try {
+    const delegate = getDelegate(resource);
     const data = await delegate.update({ where: { id }, data: body ?? {} });
     return jsonOk(data);
-  } catch (e: any) {
-    // Prisma throws on missing record
-    return jsonError("Not found", 404, e?.message);
+  } catch (error) {
+    return handlePrismaError(error);
   }
 }
 
 export async function deleteHandler(resource: AllowedResource, id: string) {
-  const delegate: any = getDelegate(resource);
   try {
+    const delegate = getDelegate(resource);
     const data = await delegate.delete({ where: { id } });
     return jsonOk(data);
-  } catch (e: any) {
-    return jsonError("Not found", 404, e?.message);
+  } catch (error) {
+    return handlePrismaError(error);
   }
 }

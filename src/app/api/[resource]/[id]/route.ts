@@ -45,4 +45,3 @@ export async function DELETE(_req: NextRequest, ctx: Ctx) {
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204 });
 }
-

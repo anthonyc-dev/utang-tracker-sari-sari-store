@@ -6,6 +6,8 @@ import {
   jsonError,
   listHandler,
 } from "../_rest/utils";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 
 export const runtime = "nodejs";
 
@@ -28,11 +30,14 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     body = undefined;
   }
 
-  return createHandler(resource, body);
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  return createHandler(resource, body, session?.user?.id);
 }
 
 // Optional: make preflight happy if you ever call from a different origin
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204 });
 }
-

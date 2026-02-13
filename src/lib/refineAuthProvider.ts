@@ -5,7 +5,6 @@ import { authClient } from "@/lib/auth-client";
 
 export const refineAuthProvider: AuthProvider = {
   login: async () => {
-    // Actual sign-in happens on /sign-in page with better-auth
     return { success: true, redirectTo: "/dashboard" };
   },
   logout: async () => {

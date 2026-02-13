@@ -43,6 +43,7 @@ import { Card, CardContent } from "@components/ui/card";
 
 // --- shadcn pagination imports ---
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Pagination } from "@components/shared/Pagination";
 
 const storeSchema = z.object({
   name: z.string().min(1, "Store name is required"),
@@ -219,95 +220,95 @@ export default function StoresPage() {
         Stores
       </h1>
 
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-3 w-lg">
+          <Input
+            type="text"
+            placeholder="Search stores..."
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            className="max-w-xs"
+            onKeyDown={e => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+              }
+            }}
+          />
+        </div>
+        <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm" onClick={() => setIsCreateModalOpen(true)}>
+              Add Store
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add Store</DialogTitle>
+            </DialogHeader>
+            <Form {...form}>
+              <form
+                onSubmit={form.handleSubmit(onSubmit)}
+                className="space-y-4"
+                autoComplete="off"
+              >
+                <FormField
+                  control={form.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Store Name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Enter store name" {...field} disabled={isCreating} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="address"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Address</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Enter address" {...field} disabled={isCreating} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {submitError && (
+                  <div className="text-destructive text-sm">{submitError}</div>
+                )}
+
+                <DialogFooter>
+                  <Button type="button" variant="ghost" onClick={() => setIsCreateModalOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={isCreating}>
+                    {isCreating ? "Adding..." : "Add Store"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
       <Card>
         <CardContent>
-          <div className="flex items-center justify-between gap-2">
-            <div className="mb-6 flex items-center gap-3 w-lg">
-              <Input
-                type="text"
-                placeholder="Search stores..."
-                value={searchInput}
-                onChange={e => setSearchInput(e.target.value)}
-                className="max-w-xs"
-                onKeyDown={e => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                  }
-                }}
-              />
-            </div>
-            <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-              <DialogTrigger asChild>
-                <Button size="sm" onClick={() => setIsCreateModalOpen(true)}>
-                  Add Store
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add Store</DialogTitle>
-                </DialogHeader>
-                <Form {...form}>
-                  <form
-                    onSubmit={form.handleSubmit(onSubmit)}
-                    className="space-y-4"
-                    autoComplete="off"
-                  >
-                    <FormField
-                      control={form.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Store Name</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Enter store name" {...field} disabled={isCreating} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="address"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Address</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Enter address" {...field} disabled={isCreating} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {submitError && (
-                      <div className="text-destructive text-sm">{submitError}</div>
-                    )}
-
-                    <DialogFooter>
-                      <Button type="button" variant="ghost" onClick={() => setIsCreateModalOpen(false)}>
-                        Cancel
-                      </Button>
-                      <Button type="submit" disabled={isCreating}>
-                        {isCreating ? "Adding..." : "Add Store"}
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </Form>
-              </DialogContent>
-            </Dialog>
-          </div>
-
           {/* Stores Table using shadcn table */}
           <div className="space-y-2">
-            {isLoading && <div>Loading...</div>}
+
             {error && <div className="text-destructive">Error loading stores</div>}
 
             <Table>
               <TableHeader>
-                <TableRow className="bg-gray-100">
+                <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Address</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -356,9 +357,8 @@ export default function StoresPage() {
                     <TableRow key={store.id}>
                       <TableCell>{store.name}</TableCell>
                       <TableCell>{store.address}</TableCell>
-                      <TableCell className="space-x-1">
+                      <TableCell className="space-x-1 text-right align-middle">
                         <DropdownMenu>
-                          {/* fix: DropdownMenuTrigger must receive a single child */}
                           <DropdownMenuTrigger asChild>
                             <span>
                               <Button variant="ghost" size="icon">
@@ -366,11 +366,10 @@ export default function StoresPage() {
                               </Button>
                             </span>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
+                          <DropdownMenuContent align="end" side="bottom">
                             <DropdownMenuItem onClick={() => startEdit(store)}>
                               <EditIcon className="size-4" />
                               <span className="flex items-center gap-2">Edit</span>
-
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleDelete(store.id)}
@@ -378,7 +377,6 @@ export default function StoresPage() {
                             >
                               <Trash className="size-4" />
                               <span className="flex items-center gap-2">Delete</span>
-
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -386,7 +384,17 @@ export default function StoresPage() {
                     </TableRow>
                   )
                 )}
-                {Array.isArray(data) && data.length === 0 && (
+                {isLoading && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={3}
+                      className="text-center text-muted-foreground p-6"
+                    >
+                      Loading...
+                    </TableCell>
+                  </TableRow>
+                )}
+                {Array.isArray(data) && data.length === 0 && !isLoading && (
                   <TableRow>
                     <TableCell
                       colSpan={3}
@@ -417,100 +425,3 @@ export default function StoresPage() {
   );
 }
 
-// --- Shadcn-inspired pagination component --- //
-type PaginationProps = {
-  page: number;
-  pageCount: number;
-  onPrev: () => void;
-  onNext: () => void;
-  onPage: (num: number) => void;
-  totalCount: number;
-  pageSize: number;
-  firstItemIdx: number;
-  lastItemIdx: number;
-};
-
-function Pagination({
-  page,
-  pageCount,
-  onPrev,
-  onNext,
-  onPage,
-  totalCount,
-  pageSize,
-  firstItemIdx,
-  lastItemIdx,
-}: PaginationProps) {
-  // For large page counts, only show nearby numbers and first/last
-  const siblings = 1;
-  let pagesToShow: (number | string)[] = [];
-
-  if (pageCount <= 7) {
-    pagesToShow = Array.from({ length: pageCount }, (_, i) => i + 1);
-  } else {
-    pagesToShow.push(1);
-    let left = Math.max(page - siblings, 2), right = Math.min(page + siblings, pageCount - 1);
-    if (left > 2) pagesToShow.push("...");
-    for (let i = left; i <= right; i++) pagesToShow.push(i);
-    if (right < pageCount - 1) pagesToShow.push("...");
-    pagesToShow.push(pageCount);
-  }
-
-  return (
-    <div className="flex items-center justify-between gap-1 mt-4 w-full">
-      {/* Data count display */}
-      <div className="text-sm text-muted-foreground pr-1 pb-1 item">
-        {totalCount === 0 ? (
-          "No results"
-        ) : (
-          <>
-            Showing <span className="font-semibold">{firstItemIdx}</span>
-            {" – "}
-            <span className="font-semibold">{lastItemIdx}</span>
-            {" of "}
-            <span className="font-semibold">{totalCount}</span>
-          </>
-        )}
-      </div>
-      <div className="flex items-center gap-1">
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={onPrev}
-          disabled={page <= 1}
-          aria-label="Previous page"
-        >
-          <ChevronLeft className="size-4" />
-        </Button>
-        {pagesToShow.map((num, i) =>
-          typeof num === "number" ? (
-            <Button
-              key={num}
-              size="icon"
-              variant={num === page ? "default" : "ghost"}
-              onClick={() => onPage(num)}
-              aria-current={num === page}
-              aria-label={`Page ${num}`}
-              className={num === page ? "bg-primary text-white" : ""}
-            >
-              {num}
-            </Button>
-          ) : (
-            <span key={`ellipsis-${i}`} className="mx-1 text-sm text-muted-foreground">
-              &hellip;
-            </span>
-          )
-        )}
-        <Button
-          size="icon"
-          variant="ghost"
-          onClick={onNext}
-          disabled={page >= pageCount}
-          aria-label="Next page"
-        >
-          <ChevronRight className="size-4" />
-        </Button>
-      </div>
-    </div>
-  );
-}

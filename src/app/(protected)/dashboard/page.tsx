@@ -79,7 +79,7 @@ export default function DashboardPage() {
       {/* Stat Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {STAT_CARDS.map((stat, idx) => (
-          <Card key={stat.label} className="shadow-sm border-0 bg-white">
+          <Card key={stat.label} className="shadow-sm border-0 ">
             <CardHeader className="pb-2">
               <CardDescription className="uppercase text-xs tracking-wide text-muted-foreground">
                 {stat.label}
@@ -96,7 +96,7 @@ export default function DashboardPage() {
         ))}
       </div>
       {/* Chart Card */}
-      <Card className="shadow-md border-0 bg-white">
+      <Card className="shadow-md border-0 ">
         <CardHeader>
           <CardTitle className="flex justify-between items-center">
             Sales Overview

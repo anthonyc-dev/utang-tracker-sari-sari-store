@@ -13,6 +13,28 @@
   }
 }
 
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2c2c2c;
+  border-radius: 20px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a3a;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2c2c2c transparent;
+}
+
 :root {
   --background: oklch(0.9821 0 0);
   --foreground: oklch(0.2435 0 0);

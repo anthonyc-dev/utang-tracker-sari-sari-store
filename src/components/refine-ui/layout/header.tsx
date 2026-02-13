@@ -2,6 +2,7 @@ import {
   useRefineOptions,
   useActiveAuthProvider,
   useLogout,
+  useGetIdentity,
 } from "@refinedev/core";
 import {
   DropdownMenu,
@@ -119,8 +120,15 @@ function MobileHeader() {
 
 const UserDropdown = () => {
   const { mutate: logout, isPending: isLoggingOut } = useLogout();
-
   const authProvider = useActiveAuthProvider();
+
+  // Use identity hook
+  const { data: user, isLoading: userIsLoading } = useGetIdentity<{
+    id: string;
+    name?: string;
+    email?: string;
+    avatar?: string;
+  }>();
 
   if (!authProvider?.getIdentity) {
     return null;
@@ -128,8 +136,15 @@ const UserDropdown = () => {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger>
-        <UserAvatar />
+      <DropdownMenuTrigger asChild>
+        <div className={cn("flex", "items-center", "gap-2", "cursor-pointer")}>
+          <UserAvatar />
+          {!userIsLoading && user?.name && (
+            <span className={cn("font-medium", "text-sm", "max-w-40", "truncate")}>
+              {user.name}
+            </span>
+          )}
+        </div>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem

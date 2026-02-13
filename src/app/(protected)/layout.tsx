@@ -25,7 +25,10 @@ export default function ProtectedLayout({
   if (isPending) {
     return (
       <main className="flex h-screen max-w-md flex-col items-center justify-center mx-auto p-6">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        <div className="flex flex-col items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          <span>Loading...</span>
+        </div>
       </main>
     );
   }

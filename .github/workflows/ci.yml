@@ -1,10 +1,10 @@
-name: CI
+name: CI Pipline
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, deploy]
   push:
-    branches: [main]
+    branches: [main, deploy]
 
 jobs:
   ci:

@@ -73,7 +73,9 @@ export default function DashboardPage() {
     <main className="min-h-screen w-full flex flex-col mx-auto gap-6">
       <Breadcrumb />
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Dashboard</h1>
+        <h1 className="text-2xl font-bold flex items-center gap-3">
+          Dashboard
+        </h1>
 
       </div>
       {/* Stat Cards */}

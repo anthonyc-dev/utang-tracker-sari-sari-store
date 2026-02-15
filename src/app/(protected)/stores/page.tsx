@@ -42,7 +42,6 @@ import {
 import { Card, CardContent } from "@components/ui/card";
 
 // --- shadcn pagination imports ---
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Pagination } from "@components/shared/Pagination";
 
 const storeSchema = z.object({
@@ -63,15 +62,15 @@ export default function StoresPage() {
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
 
-  // Pagination state
+
   const [page, setPage] = useState(1);
 
-  // Live search: update `search` immediately when user types
+
   useEffect(() => {
     setSearch(searchInput);
-    setPage(1); // reset to page 1 on search
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchInput]); // instant search as input changes
+    setPage(1);
+
+  }, [searchInput]);
 
   const {
     query,

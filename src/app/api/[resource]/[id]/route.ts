@@ -6,7 +6,10 @@ import {
   isAllowedResource,
   jsonError,
   updateHandler,
+  verifyUserAccess,
 } from "../../_rest/utils";
+import { headers } from "next/headers";
+import { auth } from "@lib/auth";
 
 export const runtime = "nodejs";
 
@@ -15,12 +18,27 @@ type Ctx = { params: Promise<{ resource: string; id: string }> };
 export async function GET(_req: NextRequest, ctx: Ctx) {
   const { resource, id } = await ctx.params;
   if (!isAllowedResource(resource)) return jsonError("Unknown resource", 404);
-  return getOneHandler(resource, id);
+
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  return getOneHandler(resource, id, session?.user?.id);
 }
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
   const { resource, id } = await ctx.params;
   if (!isAllowedResource(resource)) return jsonError("Unknown resource", 404);
+
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  // Verify user has access before update
+  const hasAccess = await verifyUserAccess(resource, id, session?.user?.id);
+  if (!hasAccess) {
+    return jsonError("Forbidden", 403);
+  }
 
   let body: unknown;
   try {
@@ -39,6 +57,17 @@ export async function PUT(req: NextRequest, ctx: Ctx) {
 export async function DELETE(_req: NextRequest, ctx: Ctx) {
   const { resource, id } = await ctx.params;
   if (!isAllowedResource(resource)) return jsonError("Unknown resource", 404);
+
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  // Verify user has access before delete
+  const hasAccess = await verifyUserAccess(resource, id, session?.user?.id);
+  if (!hasAccess) {
+    return jsonError("Forbidden", 403);
+  }
+
   return deleteHandler(resource, id);
 }
 

@@ -15,11 +15,12 @@ import {
 
 import routerProvider from "@refinedev/nextjs-router";
 
-import { dataProvider } from "@providers/data-provider";
-import { refineAuthProvider } from "@/lib/refineAuthProvider";
+
 import { useNotificationProvider } from "@/components/refine-ui/notification/use-notification-provider";
 import { Toaster } from "@/components/refine-ui/notification/toaster";
 import "@/app/globals.css";
+import { refineAuthProvider } from "@/lib/refineAuthProvider";
+import { dataProvider } from "@providers/data-provider";
 
 type RefineContextProps = {
   children: React.ReactNode;
@@ -27,6 +28,7 @@ type RefineContextProps = {
 
 export const RefineContext = ({ children }: RefineContextProps) => {
   const notificationProvider = useNotificationProvider();
+
 
   return (
     <RefineKbarProvider>

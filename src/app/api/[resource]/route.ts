@@ -16,7 +16,12 @@ type Ctx = { params: Promise<{ resource: string }> };
 export async function GET(req: NextRequest, ctx: Ctx) {
   const { resource } = await ctx.params;
   if (!isAllowedResource(resource)) return jsonError("Unknown resource", 404);
-  return listHandler(req, resource);
+
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  return listHandler(req, resource, session?.user?.id);
 }
 
 export async function POST(req: NextRequest, ctx: Ctx) {
@@ -37,7 +42,6 @@ export async function POST(req: NextRequest, ctx: Ctx) {
   return createHandler(resource, body, session?.user?.id);
 }
 
-// Optional: make preflight happy if you ever call from a different origin
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204 });
 }

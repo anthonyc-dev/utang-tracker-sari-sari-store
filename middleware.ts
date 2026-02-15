@@ -1,33 +1,28 @@
+// middleware.ts
+import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-export function middleware(req: NextRequest) {
-  console.log("Middleware triggered for:", req.nextUrl.pathname);
-  const session = req.cookies.get("better-auth.session")?.value;
-  const pathname = req.nextUrl.pathname;
+export async function middleware(request: NextRequest) {
+  // Only protect API routes
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
 
-  const protectedRoutes = ["/dashboard", "/users", "/settings"];
-  const authRoutes = ["/sign-in", "/sign-up"];
+    // Allow auth-related endpoints
+    if (request.nextUrl.pathname.startsWith("/api/auth")) {
+      return NextResponse.next();
+    }
 
-  // 1. Block unauthenticated users from protected routes
-  if (!session && protectedRoutes.some((p) => pathname.startsWith(p))) {
-    return NextResponse.redirect(new URL("/sign-in", req.url));
-  }
-
-  // 2. Block authenticated users from auth pages
-  if (session && authRoutes.some((p) => pathname.startsWith(p))) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+    if (!session) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    "/dashboard/:path*",
-    "/users/:path*",
-    "/settings/:path*",
-    "/sign-in",
-    "/sign-up",
-  ],
+  matcher: "/api/:path*",
 };

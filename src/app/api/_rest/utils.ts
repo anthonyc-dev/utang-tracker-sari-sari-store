@@ -6,7 +6,6 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 
 // --- Constants & Types ---
-
 export const ALLOWED_RESOURCES = [
   "stores",
   "store_users",
@@ -60,7 +59,6 @@ export function getDelegate(resource: AllowedResource): PrismaDelegate {
 }
 
 // --- Validation Schemas ---
-
 const paginationSchema = z.object({
   _start: z.coerce.number().int().nonnegative().optional(),
   _end: z.coerce.number().int().nonnegative().optional(),
@@ -74,14 +72,13 @@ const sortSchema = z.object({
 });
 
 // --- Helper Functions ---
-
 function parsePagination(searchParams: URLSearchParams) {
   const parseResult = paginationSchema.safeParse(
     Object.fromEntries(searchParams.entries()),
   );
 
   if (!parseResult.success) {
-    return { skip: 0, take: 10 }; // Safe fallback
+    return { skip: 0, take: 10 };
   }
 
   const { _start, _end, page, perPage } = parseResult.data;
@@ -116,10 +113,10 @@ function stringOrUndefined(v: unknown): string | undefined {
 }
 
 // --- Filter Building ---
-
 function buildWhere(
   resource: AllowedResource,
   searchParams: URLSearchParams,
+  userId?: string,
 ): any {
   const q = stringOrUndefined(searchParams.get("q"));
   const params = Object.fromEntries(searchParams.entries());
@@ -128,22 +125,45 @@ function buildWhere(
     case "stores": {
       const where: Prisma.StoreWhereInput = {};
       if (q) where.name = { contains: q, mode: "insensitive" };
+
+      // Only show stores that the user has access to
+      if (userId) {
+        where.users = {
+          some: {
+            userId: userId,
+          },
+        };
+      }
       return where;
     }
+
     case "store_users": {
       const where: Prisma.StoreUserWhereInput = {};
       const storeId = stringOrUndefined(params.storeId);
-      const userId = stringOrUndefined(params.userId);
       const role = stringOrUndefined(params.role);
 
-      if (storeId) where.storeId = storeId;
+      // Users can only see their own store-user relationships
       if (userId) where.userId = userId;
+      if (storeId) where.storeId = storeId;
       if (role) where.role = role as any;
       return where;
     }
+
     case "customers": {
       const where: Prisma.CustomerWhereInput = {};
       const storeId = stringOrUndefined(params.storeId);
+
+      // Filter by stores the user has access to
+      if (userId) {
+        where.store = {
+          users: {
+            some: {
+              userId: userId,
+            },
+          },
+        };
+      }
+
       if (storeId) where.storeId = storeId;
       if (q) {
         where.OR = [
@@ -153,10 +173,23 @@ function buildWhere(
       }
       return where;
     }
+
     case "items": {
       const where: Prisma.ItemWhereInput = {};
       const storeId = stringOrUndefined(params.storeId);
       const category = stringOrUndefined(params.category);
+
+      // Filter by stores the user has access to
+      if (userId) {
+        where.store = {
+          users: {
+            some: {
+              userId: userId,
+            },
+          },
+        };
+      }
+
       if (storeId) where.storeId = storeId;
       if (category) where.category = category;
       if (q) {
@@ -167,29 +200,72 @@ function buildWhere(
       }
       return where;
     }
+
     case "utang": {
       const where: Prisma.UtangWhereInput = {};
       const storeId = stringOrUndefined(params.storeId);
       const customerId = stringOrUndefined(params.customerId);
       const status = stringOrUndefined(params.status);
+
+      // Filter by stores the user has access to
+      if (userId) {
+        where.store = {
+          users: {
+            some: {
+              userId: userId,
+            },
+          },
+        };
+      }
+
       if (storeId) where.storeId = storeId;
       if (customerId) where.customerId = customerId;
       if (status) where.status = status as any;
       if (q) where.description = { contains: q, mode: "insensitive" };
       return where;
     }
+
     case "utang_items": {
       const where: Prisma.UtangItemWhereInput = {};
       const utangId = stringOrUndefined(params.utangId);
       const itemId = stringOrUndefined(params.itemId);
+
+      // Filter by utang that belongs to stores the user has access to
+      if (userId) {
+        where.utang = {
+          store: {
+            users: {
+              some: {
+                userId: userId,
+              },
+            },
+          },
+        };
+      }
+
       if (utangId) where.utangId = utangId;
       if (itemId) where.itemId = itemId;
       return where;
     }
+
     case "payments": {
       const where: Prisma.PaymentWhereInput = {};
       const utangId = stringOrUndefined(params.utangId);
       const paymentMethod = stringOrUndefined(params.paymentMethod);
+
+      // Filter by payments that belong to user's stores
+      if (userId) {
+        where.utang = {
+          store: {
+            users: {
+              some: {
+                userId: userId,
+              },
+            },
+          },
+        };
+      }
+
       if (utangId) where.utangId = utangId;
       if (paymentMethod) where.paymentMethod = paymentMethod as any;
       if (q) {
@@ -200,23 +276,20 @@ function buildWhere(
       }
       return where;
     }
+
     case "user": {
-      const where: Prisma.UserWhereInput = {};
-      if (q) {
-        where.OR = [
-          { name: { contains: q, mode: "insensitive" } },
-          { email: { contains: q, mode: "insensitive" } },
-        ];
+      // Users can only see their own user data
+      if (userId) {
+        return { id: userId };
       }
-      return where;
+      return {};
     }
+
     default:
       return {};
   }
 }
-
 // --- Responses & Errors ---
-
 export function jsonOk<T>(data: T, init?: ResponseInit) {
   return NextResponse.json(data, { status: 200, ...init });
 }
@@ -249,13 +322,22 @@ function handlePrismaError(e: unknown) {
 }
 
 // --- Handlers ---
+// Update listHandler to include user context
+export async function listHandler(
+  req: NextRequest,
+  resource: AllowedResource,
+  userId?: string,
+) {
+  // REJECT EARLY - Don't even process if no userId
+  if (!userId) {
+    return jsonError("Unauthorized", 401);
+  }
 
-export async function listHandler(req: NextRequest, resource: AllowedResource) {
   try {
     const url = new URL(req.url);
     const { skip, take } = parsePagination(url.searchParams);
     const orderBy = parseSort(url.searchParams);
-    const where = buildWhere(resource, url.searchParams);
+    const where = buildWhere(resource, url.searchParams, userId as string);
 
     const delegate = getDelegate(resource);
 
@@ -269,21 +351,134 @@ export async function listHandler(req: NextRequest, resource: AllowedResource) {
       }),
     ]);
 
-    // refine expects `x-total-count` header for pagination
     return jsonOk(data, { headers: { "x-total-count": String(total) } });
   } catch (error) {
     return handlePrismaError(error);
   }
 }
 
-export async function getOneHandler(resource: AllowedResource, id: string) {
+export async function getOneHandler(
+  resource: AllowedResource,
+  id: string,
+  userId?: string,
+) {
   try {
     const delegate = getDelegate(resource);
-    const data = await delegate.findUnique({ where: { id } });
+    const data = await delegate.findUnique({
+      where: { id },
+      ...(getIncludeForResource(resource)
+        ? { include: getIncludeForResource(resource) }
+        : {}),
+    });
+
     if (!data) return jsonError("Not found", 404);
+
+    // Verify user has access to this resource
+    if (!(await userHasAccessToResource(resource, data, userId))) {
+      return jsonError("Forbidden", 403);
+    }
+
     return jsonOk(data);
   } catch (error) {
     return handlePrismaError(error);
+  }
+}
+
+// Helper function to check if user has access to a specific resource
+async function userHasAccessToResource(
+  resource: AllowedResource,
+  data: any,
+  userId?: string,
+): Promise<boolean> {
+  if (!userId) return false;
+
+  switch (resource) {
+    case "stores":
+      // Check if user is associated with this store
+      const storeUser = await prisma.storeUser.findFirst({
+        where: {
+          storeId: data.id,
+          userId: userId,
+        },
+      });
+      return !!storeUser;
+
+    case "store_users":
+      // Users can only access their own store-user records
+      return data.userId === userId;
+
+    case "customers":
+    case "items":
+      // Check if the store belongs to the user
+      const storeAccess = await prisma.storeUser.findFirst({
+        where: {
+          storeId: data.storeId,
+          userId: userId,
+        },
+      });
+      return !!storeAccess;
+
+    case "utang":
+      // Check if the utang's store belongs to the user
+      const utangAccess = await prisma.storeUser.findFirst({
+        where: {
+          storeId: data.storeId,
+          userId: userId,
+        },
+      });
+      return !!utangAccess;
+
+    case "utang_items":
+      // Check through utang
+      const utangItem = await prisma.utangItem.findUnique({
+        where: { id: data.id },
+        include: { utang: { include: { store: true } } },
+      });
+      if (!utangItem) return false;
+      const utangItemAccess = await prisma.storeUser.findFirst({
+        where: {
+          storeId: utangItem.utang.storeId,
+          userId: userId,
+        },
+      });
+      return !!utangItemAccess;
+
+    case "payments":
+      // Check through utang
+      const payment = await prisma.payment.findUnique({
+        where: { id: data.id },
+        include: { utang: { include: { store: true } } },
+      });
+      if (!payment) return false;
+      const paymentAccess = await prisma.storeUser.findFirst({
+        where: {
+          storeId: payment.utang.storeId,
+          userId: userId,
+        },
+      });
+      return !!paymentAccess;
+
+    case "user":
+      return data.id === userId;
+
+    default:
+      return false;
+  }
+}
+
+function getIncludeForResource(resource: AllowedResource): any {
+  switch (resource) {
+    case "customers":
+    case "items":
+      return { store: true };
+    case "utang":
+      return { store: true };
+    case "utang_items":
+      return { utang: { include: { store: true } } };
+    case "payments":
+      return { utang: { include: { store: true } } };
+    default:
+      return undefined;
   }
 }
 
@@ -312,8 +507,28 @@ export async function createHandler(
       });
       return jsonCreated(data);
     }
+    if (resource === "customers") {
+      if (!body.storeId) {
+        return jsonError("Missing store ID for customer.", 400);
+      }
 
-    // 2. Utang creation: Nested items/payments
+      // Exclude storeId from the body before spreading
+      const { storeId, ...safeBody } = body;
+
+      // Create customer using relational connect
+      const data = await prisma.customer.create({
+        data: {
+          ...safeBody, // safe fields only
+          store: {
+            connect: { id: storeId }, // attach to store
+          },
+        },
+      });
+
+      return jsonCreated(data);
+    }
+
+    // 3. Utang creation: Nested items/payments
     if (resource === "utang") {
       const { items, payments, ...rest } = body ?? {};
       const data = await prisma.utang.create({
@@ -351,7 +566,7 @@ export async function createHandler(
       return jsonCreated(data);
     }
 
-    // 3. Generic create
+    // 4. Generic create
     const delegate = getDelegate(resource);
     const data = await delegate.create({ data: body ?? {} });
     return jsonCreated(data);
@@ -382,4 +597,25 @@ export async function deleteHandler(resource: AllowedResource, id: string) {
   } catch (error) {
     return handlePrismaError(error);
   }
+}
+
+export async function verifyUserAccess(
+  resource: AllowedResource,
+  id: string,
+  userId?: string,
+): Promise<boolean> {
+  if (!userId) return false;
+
+  // Implement similar access verification logic as in userHasAccessToResource
+  // You can reuse the same function by importing it
+  const delegate = getDelegate(resource);
+  const data = await delegate.findUnique({
+    where: { id },
+    ...(getIncludeForResource(resource)
+      ? { include: getIncludeForResource(resource) as any }
+      : {}),
+  });
+
+  if (!data) return false;
+  return userHasAccessToResource(resource, data, userId);
 }
